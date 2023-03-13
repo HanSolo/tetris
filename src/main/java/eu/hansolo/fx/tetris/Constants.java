@@ -12,10 +12,8 @@ public class Constants {
     public static final String PROPERTIES_FILE_NAME = "tetris.properties";
     public static final String HIGHSCORE_KEY        = "highscore";
 
-    public static final Color  GITHUB_GRAY_BLOCK    = Color.rgb(22, 27, 34);
-
     public static final Map<Integer, Long> LEVEL_SPEED_MAP = new HashMap<>() {{
-        put(1, 500_000_000l);
+        put(1, 1_500_000_000l);
         put(2, 500_000_000l);
         put(3, 500_000_000l);
         put(4, 500_000_000l);

@@ -13,21 +13,23 @@ import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class Main extends Application {
     protected enum GameMode {
-        STANDARD(Color.rgb(0, 0, 0)),
-        GITHUB(Color.rgb(15, 18, 23));
+        STANDARD(Color.rgb(0, 0, 0), Color.rgb(18, 18,18)),
+        GITHUB(Color.rgb(15, 18, 23), Color.rgb(22, 27, 34));
 
         public final Color backgroundColor;
+        public final Color patternColor;
 
-        GameMode(final Color backgroundColor) {
+        GameMode(final Color backgroundColor, final Color patternColor) {
             this.backgroundColor = backgroundColor;
+            this.patternColor    = patternColor;
         }
     }
     protected enum Direction {
@@ -128,8 +130,10 @@ public class Main extends Application {
     private static final int                   MATRIX_HEIGHT   = 20;
     private static final double                CELL_WIDTH      = 24;
     private static final double                CELL_HEIGHT     = 24;
-    private static final double                WIDTH           = MATRIX_WIDTH * CELL_WIDTH;
-    private static final double                HEIGHT          = MATRIX_HEIGHT * CELL_HEIGHT;
+    private static final double                GAME_WIDTH      = MATRIX_WIDTH * CELL_WIDTH;
+    private static final double                GAME_HEIGHT     = MATRIX_HEIGHT * CELL_HEIGHT;
+    private static final double                WIDTH           = GAME_WIDTH + 50;
+    private static final double                HEIGHT          = GAME_HEIGHT + 50;
     private static final Random                RND             = new Random();
     private static final Integer[][]           MATRIX          = { { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
                                                                    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -150,13 +154,13 @@ public class Main extends Application {
                                                                    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
                                                                    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
                                                                    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-                                                                  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+                                                                   { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
                                                                  };
     private              boolean               running;
-    private              long                  lastTimerCall;
-    private              long                  lastOneSecondCheck;
     private              long                  lastUpdateCheck;
     private              AnimationTimer        timer;
+    private              Canvas                bkgCanvas;
+    private              GraphicsContext       bkgCtx;
     private              Canvas                canvas;
     private              GraphicsContext       ctx;
     private              Image                 cyanBlockImg;
@@ -173,49 +177,31 @@ public class Main extends Application {
     private              GameMode              gameMode;
     private              int                   level;
     private              Block                 activeBlock;
+    private              Block                 nextBlock;
     private              long                  highscore;
     private              long                  score;
     private              int                   noOfLifes;
     private              List<Integer>         rowsToRemove;
-    private              Map<BlockType, Image> standardBlockTypes;
-    private              Map<BlockType, Image> githubBlockTypes;
+    private              Map<BlockType, Image> imageMap;
 
 
     // ******************** Methods *******************************************
     @Override public void init() {
-        running            = true;
-        highscore          = PropertyManager.INSTANCE.getLong(Constants.HIGHSCORE_KEY, 0);
-        gameMode           = GameMode.GITHUB;
-        level        = 1;
-        activeBlock  = null;
-        rowsToRemove = new ArrayList<>();
-        standardBlockTypes = new HashMap<>(BlockType.values().length);
-        githubBlockTypes   = new HashMap<>(BlockType.values().length);
-
-        lastTimerCall      = System.nanoTime();
-        lastOneSecondCheck = System.nanoTime();
-        lastUpdateCheck    = System.nanoTime();
-        timer              = new AnimationTimer() {
+        running         = true;
+        highscore       = PropertyManager.INSTANCE.getLong(Constants.HIGHSCORE_KEY, 0);
+        level           = 1;
+        rowsToRemove    = new ArrayList<>();
+        imageMap        = new ConcurrentHashMap<>(BlockType.values().length);
+        lastUpdateCheck = System.nanoTime();
+        timer           = new AnimationTimer() {
             @Override public void handle(final long now) {
                 if (running) {
                     // Main loop
-                    /*
-                    if (now > lastTimerCall) {
-                        updateAndDraw();
-                        lastTimerCall = now;
-                    }
-                    */
-
                     // update block position
                     if (now > lastUpdateCheck + Constants.LEVEL_SPEED_MAP.get(level)) {
                         if (null == activeBlock) { spawnBlock(); }
                         redraw(true);
                         lastUpdateCheck = now;
-                    }
-
-                    // 1s check
-                    if (now > lastOneSecondCheck + 1_000_000_000) {
-                        lastOneSecondCheck = now;
                     }
                 } else {
                     startScreen();
@@ -224,7 +210,10 @@ public class Main extends Application {
         };
 
         // Setup canvas nodes
-        canvas = new Canvas(WIDTH, HEIGHT);
+        bkgCanvas = new Canvas(WIDTH, HEIGHT);
+        bkgCtx    = bkgCanvas.getGraphicsContext2D();
+
+        canvas = new Canvas(GAME_WIDTH, GAME_HEIGHT);
         ctx    = canvas.getGraphicsContext2D();
 
         // Load all images
@@ -233,6 +222,13 @@ public class Main extends Application {
         // Load all sounds
         loadSounds();
 
+        // Set Game Mode
+        setGameMode(GameMode.STANDARD);
+
+        // Initialize block
+        activeBlock = null;
+        nextBlock   = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
+
         // Initialize level
         noOfLifes  = 3;
         score      = 0;
@@ -240,16 +236,23 @@ public class Main extends Application {
     }
 
     @Override public void start(final Stage stage) {
-        final StackPane pane  = new StackPane(canvas);
+        final StackPane pane  = new StackPane(bkgCanvas, canvas);
         final Scene     scene = new Scene(pane, WIDTH, HEIGHT);
 
         scene.setOnKeyPressed(e -> {
-            if (running && null != activeBlock) {
+            if (running) {
                 switch (e.getCode()) {
                     case LEFT  -> activeBlock.moveLeft();
                     case RIGHT -> activeBlock.moveRight();
                     case SPACE -> activeBlock.rotate();
                     case DOWN  -> activeBlock.drop();
+                    case M     -> {
+                        if (GameMode.STANDARD == gameMode) {
+                            setGameMode(GameMode.GITHUB);
+                        } else {
+                            setGameMode(GameMode.STANDARD);
+                        }
+                    }
                 }
             } else {
                 level = 1;
@@ -275,34 +278,18 @@ public class Main extends Application {
 
     // Helper methods
     private void loadImages() {
-        cyanBlockImg   = new Image(getClass().getResourceAsStream("cyanBlock.png"), 24, 24, true, false);
-        blueBlockImg   = new Image(getClass().getResourceAsStream("blueBlock.png"), 24, 24, true, false);
-        orangeBlockImg = new Image(getClass().getResourceAsStream("orangeBlock.png"), 24, 24, true, false);
-        yellowBlockImg = new Image(getClass().getResourceAsStream("yellowBlock.png"), 24, 24, true, false);
-        greenBlockImg  = new Image(getClass().getResourceAsStream("greenBlock.png"), 24, 24, true, false);
-        purpleBlockImg = new Image(getClass().getResourceAsStream("purpleBlock.png"), 24, 24, true, false);
-        redBlockImg    = new Image(getClass().getResourceAsStream("redBlock.png"), 24, 24, true, false);
+        cyanBlockImg   = new Image(getClass().getResourceAsStream("cyanBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        blueBlockImg   = new Image(getClass().getResourceAsStream("blueBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        orangeBlockImg = new Image(getClass().getResourceAsStream("orangeBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        yellowBlockImg = new Image(getClass().getResourceAsStream("yellowBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        greenBlockImg  = new Image(getClass().getResourceAsStream("greenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        purpleBlockImg = new Image(getClass().getResourceAsStream("purpleBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        redBlockImg    = new Image(getClass().getResourceAsStream("redBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
 
-        githubDarkGreenBlockImg      = new Image(getClass().getResourceAsStream("githubDarkGreenBlock.png"), 24, 24, true, false);
-        githubGreenBlockImg          = new Image(getClass().getResourceAsStream("githubGreenBlock.png"), 24, 24, true, false);
-        githubLightGreenBlockImg     = new Image(getClass().getResourceAsStream("githubLightGreenBlock.png"), 24, 24, true, false);
-        githubVeryLightGreenBlockImg = new Image(getClass().getResourceAsStream("githubVeryLightGreenBlock.png"), 24, 24, true, false);
-
-        standardBlockTypes.put(BlockType.CYAN, cyanBlockImg);
-        standardBlockTypes.put(BlockType.BLUE, blueBlockImg);
-        standardBlockTypes.put(BlockType.ORANGE, orangeBlockImg);
-        standardBlockTypes.put(BlockType.YELLOW, yellowBlockImg);
-        standardBlockTypes.put(BlockType.GREEN, greenBlockImg);
-        standardBlockTypes.put(BlockType.PURPLE, purpleBlockImg);
-        standardBlockTypes.put(BlockType.RED, redBlockImg);
-
-        githubBlockTypes.put(BlockType.CYAN, githubDarkGreenBlockImg);
-        githubBlockTypes.put(BlockType.BLUE, githubDarkGreenBlockImg);
-        githubBlockTypes.put(BlockType.ORANGE, githubDarkGreenBlockImg);
-        githubBlockTypes.put(BlockType.YELLOW, githubGreenBlockImg);
-        githubBlockTypes.put(BlockType.GREEN, githubGreenBlockImg);
-        githubBlockTypes.put(BlockType.PURPLE, githubLightGreenBlockImg);
-        githubBlockTypes.put(BlockType.RED, githubVeryLightGreenBlockImg);
+        githubDarkGreenBlockImg      = new Image(getClass().getResourceAsStream("githubDarkGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        githubGreenBlockImg          = new Image(getClass().getResourceAsStream("githubGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        githubLightGreenBlockImg     = new Image(getClass().getResourceAsStream("githubLightGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        githubVeryLightGreenBlockImg = new Image(getClass().getResourceAsStream("githubVeryLightGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
     }
 
     private void loadSounds() {
@@ -311,13 +298,52 @@ public class Main extends Application {
 
 
     // ******************** Game control **************************************
+    // Set mode
+    public void setGameMode(final GameMode mode) {
+        this.gameMode = mode;
+        this.imageMap.clear();
+        switch(this.gameMode) {
+            case STANDARD -> {
+                imageMap.put(BlockType.CYAN, cyanBlockImg);
+                imageMap.put(BlockType.BLUE, blueBlockImg);
+                imageMap.put(BlockType.ORANGE, orangeBlockImg);
+                imageMap.put(BlockType.YELLOW, yellowBlockImg);
+                imageMap.put(BlockType.GREEN, greenBlockImg);
+                imageMap.put(BlockType.PURPLE, purpleBlockImg);
+                imageMap.put(BlockType.RED, redBlockImg);
+            }
+            case GITHUB   -> {
+                imageMap.put(BlockType.CYAN, githubDarkGreenBlockImg);
+                imageMap.put(BlockType.BLUE, githubDarkGreenBlockImg);
+                imageMap.put(BlockType.ORANGE, githubDarkGreenBlockImg);
+                imageMap.put(BlockType.YELLOW, githubGreenBlockImg);
+                imageMap.put(BlockType.GREEN, githubGreenBlockImg);
+                imageMap.put(BlockType.PURPLE, githubLightGreenBlockImg);
+                imageMap.put(BlockType.RED, githubVeryLightGreenBlockImg);
+            }
+            default       -> {
+                imageMap.put(BlockType.CYAN, cyanBlockImg);
+                imageMap.put(BlockType.BLUE, blueBlockImg);
+                imageMap.put(BlockType.ORANGE, orangeBlockImg);
+                imageMap.put(BlockType.YELLOW, yellowBlockImg);
+                imageMap.put(BlockType.GREEN, greenBlockImg);
+                imageMap.put(BlockType.PURPLE, purpleBlockImg);
+                imageMap.put(BlockType.RED, redBlockImg);
+            }
+        }
+        drawBackground();
+        redraw(false);
+    }
+
+
     // Play audio clips
     private void playSound(final AudioClip audioClip) { audioClip.play(); }
 
 
     // Spawn block
     private void spawnBlock() {
-        activeBlock = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
+        activeBlock = nextBlock;
+        nextBlock   = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
     }
 
 
@@ -347,7 +373,6 @@ public class Main extends Application {
 
     // Get angle related block matrix for given block
     private Integer[][] getBlockMatrix(final Block block) {
-        if (null == block) { return new Integer[0][0]; }
         switch (block.angle) {
             case 0   -> { return block.blockType.matrix_0; }
             case 90  -> { return block.blockType.matrix_90; }
@@ -360,7 +385,7 @@ public class Main extends Application {
 
     // Check whether the next move is possible in y direction
     private boolean moveDownAllowed(final Block block) {
-        if (!block.active) { return false; }
+        if (!block.active || null == block) { return false; }
         final Integer[][] blockMatrix = getBlockMatrix(block);
         for (int y = 0 ; y < blockMatrix.length ; y++) {
             for (int x = 0; x < blockMatrix[y].length; x++) {
@@ -448,45 +473,72 @@ public class Main extends Application {
 
 
     // ******************** Redraw ********************************************
+    private void drawBackground() {
+        bkgCtx.clearRect(0, 0, WIDTH, HEIGHT);
+        switch(gameMode) {
+            case STANDARD -> {
+                bkgCtx.setFill(gameMode.backgroundColor);
+                bkgCtx.fillRect(0, 0, WIDTH, HEIGHT);
+                bkgCtx.setStroke(Color.GRAY);
+                bkgCtx.setLineWidth(10);
+                bkgCtx.strokeRoundRect(10, 10, WIDTH - 20, HEIGHT - 20, 10, 10);
+            }
+            case GITHUB   -> {
+                bkgCtx.setFill(gameMode.backgroundColor);
+                bkgCtx.fillRect(0, 0, WIDTH, HEIGHT);
+                bkgCtx.setStroke(Color.rgb(48, 54, 60));
+                bkgCtx.setLineWidth(2);
+                bkgCtx.strokeRoundRect(10, 10, WIDTH - 20, HEIGHT - 20, 10, 10);
+            }
+            default       -> {
+
+            }
+        }
+    }
+
     private void redraw(final boolean update) {
+        ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
         ctx.setFill(gameMode.backgroundColor);
-        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
         // Draw matrix with inactive blocks
-        ctx.setFill(Constants.GITHUB_GRAY_BLOCK);
+        ctx.setFill(gameMode.patternColor);
         for (int y = 0 ; y < MATRIX_HEIGHT ;y++) {
             for (int x = 0; x < MATRIX_WIDTH; x++) {
-                ctx.fillRoundRect(x * CELL_WIDTH + 2, y * CELL_HEIGHT + 2, 20, 20, 5, 5);
+                switch(gameMode) {
+                    case STANDARD -> ctx.fillRect(x * CELL_WIDTH + 1, y * CELL_HEIGHT + 1, 22, 22);
+                    case GITHUB   -> ctx.fillRoundRect(x * CELL_WIDTH + 2, y * CELL_HEIGHT + 2, 20, 20, 5, 5);
+                }
                 switch(MATRIX[y][x]) {
-                    case 1 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.BLUE)   : githubBlockTypes.get(BlockType.BLUE), x * CELL_WIDTH, y * CELL_HEIGHT);
-                    case 2 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.CYAN)   : githubBlockTypes.get(BlockType.CYAN), x * CELL_WIDTH, y * CELL_HEIGHT);
-                    case 3 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.GREEN)  : githubBlockTypes.get(BlockType.GREEN), x * CELL_WIDTH, y * CELL_HEIGHT);
-                    case 4 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.YELLOW) : githubBlockTypes.get(BlockType.YELLOW), x * CELL_WIDTH, y * CELL_HEIGHT);
-                    case 5 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.ORANGE) : githubBlockTypes.get(BlockType.ORANGE), x * CELL_WIDTH, y * CELL_HEIGHT);
-                    case 6 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.PURPLE) : githubBlockTypes.get(BlockType.PURPLE), x * CELL_WIDTH, y * CELL_HEIGHT);
-                    case 7 -> ctx.drawImage(GameMode.STANDARD == gameMode ? standardBlockTypes.get(BlockType.RED)    : githubBlockTypes.get(BlockType.RED), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 1 -> ctx.drawImage(imageMap.get(BlockType.BLUE), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 2 -> ctx.drawImage(imageMap.get(BlockType.CYAN), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 3 -> ctx.drawImage(imageMap.get(BlockType.GREEN), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 4 -> ctx.drawImage(imageMap.get(BlockType.YELLOW), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 5 -> ctx.drawImage(imageMap.get(BlockType.ORANGE), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 6 -> ctx.drawImage(imageMap.get(BlockType.PURPLE), x * CELL_WIDTH, y * CELL_HEIGHT);
+                    case 7 -> ctx.drawImage(imageMap.get(BlockType.RED), x * CELL_WIDTH, y * CELL_HEIGHT);
                 }
             }
         }
 
         // Draw active block
-        ctx.setFill(Color.WHITE);
         if (noOfLifes > 0) {
             if (update) { activeBlock.update(); }
             final Integer[][] blockMatrix = getBlockMatrix(activeBlock);
             for (int y = 0 ; y < blockMatrix.length ; y++) {
                 for (int x = 0 ; x < blockMatrix[y].length ; x++) {
                     if (blockMatrix[y][x] == 1) {
-                        ctx.drawImage(activeBlock.image, (activeBlock.x * CELL_WIDTH) + (x * CELL_WIDTH), (activeBlock.y) + (y * CELL_HEIGHT));
+                        ctx.drawImage(imageMap.get(activeBlock.blockType), (activeBlock.x * CELL_WIDTH) + (x * CELL_WIDTH), (activeBlock.y) + (y * CELL_HEIGHT));
                     }
                 }
             }
-
         } else {
             //ctx.setFill(TEXT_GRAY);
             //ctx.setTextAlign(TextAlignment.CENTER);
             //ctx.fillText("GAME OVER", WIDTH * 0.5, HEIGHT * 0.75);
         }
+
+        if (null != activeBlock && !activeBlock.active) { activeBlock = null; }
     }
 
 
@@ -557,7 +609,7 @@ public class Main extends Application {
 
         // ******************** Constructors **************************************
         public Block(final BlockType blockType, final double x, final double y) {
-            super(GameMode.STANDARD == gameMode ? standardBlockTypes.get(blockType) : githubBlockTypes.get(blockType));
+            super(imageMap.get(blockType));
             this.blockType   = blockType;
             this.code        = blockType.code;
             this.x           = x;
@@ -583,12 +635,9 @@ public class Main extends Application {
             if (active) {
                 final Integer[][] blockMatrix = getBlockMatrix(Block.this);
                 double offsetY = blockMatrix.length * CELL_HEIGHT;
-                if (this.y < HEIGHT - offsetY && moveDownAllowed(Block.this)) {
+                if (this.y < GAME_HEIGHT - offsetY && moveDownAllowed(Block.this)) {
                     this.y += CELL_HEIGHT;
                 } else {
-                    this.active = false;
-                    activeBlock = null;
-
                     // Store inactive blocks in MATRIX
                     for (int y = 0 ; y < blockMatrix.length ; y++) {
                         for (int x = 0 ; x < blockMatrix[y].length ; x++) {
@@ -598,6 +647,7 @@ public class Main extends Application {
                             }
                         }
                     }
+                    this.active = false;
                 }
             }
             checkForCompleteRows();
@@ -625,8 +675,11 @@ public class Main extends Application {
         }
 
         public void drop() {
+            int dropCounter = 0;
             while(active) {
+                System.out.println(dropCounter);
                 redraw(true);
+                dropCounter++;
             }
         }
     }
