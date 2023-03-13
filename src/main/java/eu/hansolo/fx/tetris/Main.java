@@ -3,17 +3,26 @@ package eu.hansolo.fx.tetris;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Label;
 import javafx.scene.image.Image;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.scene.media.AudioClip;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
+import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class Main extends Application {
     protected enum GameMode {
         STANDARD(Color.rgb(0, 0, 0), Color.rgb(18, 18,18)),
+        GLOSSY(Color.rgb(0, 0, 0), Color.rgb(18, 18,18)),
         GITHUB(Color.rgb(15, 18, 23), Color.rgb(22, 27, 34));
 
         public final Color backgroundColor;
@@ -87,16 +97,16 @@ public class Main extends Application {
                                           { 0, 1 } },
                         new Integer[][] { { 1, 1, 1 },
                                           { 1, 0, 0 } }),
-        PURPLE(6, new Integer[][] { { 1, 1, 1 },
-                                          { 0, 1, 1 } },
-                        new Integer[][] { { 1, 1 },
-                                          { 1, 1 },
-                                          { 1, 0 }},
-                        new Integer[][] { { 1, 1, 0 },
+        PURPLE(6, new Integer[][] { { 0, 1, 0 },
                                           { 1, 1, 1 } },
                         new Integer[][] { { 0, 1 },
                                           { 1, 1 },
-                                          { 1, 1 } }),
+                                          { 0, 1 }},
+                        new Integer[][] { { 1, 1, 1 },
+                                          { 0, 1, 0 } },
+                        new Integer[][] { { 1, 0 },
+                                          { 1, 1 },
+                                          { 1, 0 } }),
         RED(7, new Integer[][] { { 1, 1, 0 },
                                        { 0, 1, 1 } },
                      new Integer[][] { { 0, 1 },
@@ -170,19 +180,42 @@ public class Main extends Application {
     private              Image                 greenBlockImg;
     private              Image                 purpleBlockImg;
     private              Image                 redBlockImg;
+    private              Image                 cyanGlossyBlockImg;
+    private              Image                 blueGlossyBlockImg;
+    private              Image                 orangeGlossyBlockImg;
+    private              Image                 yellowGlossyBlockImg;
+    private              Image                 greenGlossyBlockImg;
+    private              Image                 purpleGlossyBlockImg;
+    private              Image                 redGlossyBlockImg;
     private              Image                 githubDarkGreenBlockImg;
     private              Image                 githubGreenBlockImg;
     private              Image                 githubLightGreenBlockImg;
     private              Image                 githubVeryLightGreenBlockImg;
+    private              MediaPlayer           mediaPlayer;
+    private              Media                 soundTrack;
+    private              AudioClip             moveBlockSnd;
+    private              AudioClip             rotateBlockSnd;
+    private              AudioClip             levelUpSnd;
+    private              AudioClip             clearLineSnd;
+    private              AudioClip             clear4LinesSnd;
+    private              AudioClip             blockFallingSnd;
+    private              AudioClip             blockLandedSnd;
+    private              AudioClip             gameOverSnd;
     private              GameMode              gameMode;
     private              int                   level;
     private              Block                 activeBlock;
     private              Block                 nextBlock;
     private              long                  highscore;
     private              long                  score;
+    private              int                   linesCleared;
     private              int                   noOfLifes;
-    private              List<Integer>         rowsToRemove;
     private              Map<BlockType, Image> imageMap;
+    private              Label                 highScoreLabel;
+    private              Label                 highScoreValueLabel;
+    private              Label                 scoreLabel;
+    private              Label                 scoreValueLabel;
+    private              Canvas                previewCanvas;
+    private              GraphicsContext       previewCtx;
 
 
     // ******************** Methods *******************************************
@@ -190,17 +223,37 @@ public class Main extends Application {
         running         = true;
         highscore       = PropertyManager.INSTANCE.getLong(Constants.HIGHSCORE_KEY, 0);
         level           = 1;
-        rowsToRemove    = new ArrayList<>();
         imageMap        = new ConcurrentHashMap<>(BlockType.values().length);
         lastUpdateCheck = System.nanoTime();
         timer           = new AnimationTimer() {
             @Override public void handle(final long now) {
                 if (running) {
-                    // Main loop
-                    // update block position
+                    // Update block position
                     if (now > lastUpdateCheck + Constants.LEVEL_SPEED_MAP.get(level)) {
                         if (null == activeBlock) { spawnBlock(); }
                         redraw(true);
+
+                        // Increase level every 10 lines cleared
+                        if (linesCleared == 10) {
+                            linesCleared = 0;
+                            level++;
+                            playSound(levelUpSnd);
+                            if (level > 20) { level = 0; }
+                            //TODO: Show current level
+                        }
+
+                        // Check for failed
+                        for (int i = 0 ; i < MATRIX_WIDTH ; i++) {
+                            if (MATRIX[1][i] > 0) {
+                                noOfLifes--;
+                                if (noOfLifes == 0) {
+                                    gameOver();
+                                } else {
+                                    restartLevel();
+                                }
+                            }
+                        }
+
                         lastUpdateCheck = now;
                     }
                 } else {
@@ -213,8 +266,8 @@ public class Main extends Application {
         bkgCanvas = new Canvas(WIDTH, HEIGHT);
         bkgCtx    = bkgCanvas.getGraphicsContext2D();
 
-        canvas = new Canvas(GAME_WIDTH, GAME_HEIGHT);
-        ctx    = canvas.getGraphicsContext2D();
+        canvas    = new Canvas(GAME_WIDTH, GAME_HEIGHT);
+        ctx       = canvas.getGraphicsContext2D();
 
         // Load all images
         loadImages();
@@ -223,24 +276,56 @@ public class Main extends Application {
         loadSounds();
 
         // Set Game Mode
-        setGameMode(GameMode.STANDARD);
+        setGameMode(GameMode.GLOSSY);
 
         // Initialize block
         activeBlock = null;
         nextBlock   = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
 
+        // Initialize data
+        highScoreLabel      = createLabel("HIGHSCORE");
+        highScoreValueLabel = createLabel(Long.toString(highscore));
+
+        scoreLabel      = createLabel("SCORE");
+        scoreValueLabel = createLabel(Long.toString(score));
+
+
+        previewCanvas = new Canvas(100, 100);
+        previewCtx    = previewCanvas.getGraphicsContext2D();
+
         // Initialize level
-        noOfLifes  = 3;
-        score      = 0;
+        noOfLifes    = 3;
+        score        = 0;
+        linesCleared = 0;
         setupLevel(level);
     }
 
     @Override public void start(final Stage stage) {
-        final StackPane pane  = new StackPane(bkgCanvas, canvas);
-        final Scene     scene = new Scene(pane, WIDTH, HEIGHT);
+        mediaPlayer = new MediaPlayer(soundTrack);
+        mediaPlayer.setCycleCount(-1);
+        mediaPlayer.setVolume(0.5);
+
+        final StackPane gamePane = new StackPane(bkgCanvas, canvas);
+
+        final VBox highScoreBox = new VBox(10, highScoreLabel, highScoreValueLabel);
+        highScoreBox.setAlignment(Pos.CENTER_RIGHT);
+
+        final VBox scoreBox = new VBox(10, scoreLabel, scoreValueLabel);
+        scoreBox.setAlignment(Pos.CENTER_RIGHT);
+
+
+        final VBox dataPane = new VBox(50, highScoreBox, scoreBox, previewCanvas);
+        final HBox gameBox  = new HBox(10, gamePane, dataPane);
+
+        dataPane.setPrefWidth(200);
+        dataPane.setAlignment(Pos.TOP_CENTER);
+        dataPane.setPadding(new Insets(10));
+        gameBox.setBackground(new Background(new BackgroundFill(Color.BLACK, CornerRadii.EMPTY, Insets.EMPTY)));
+
+        final Scene     scene = new Scene(gameBox);
 
         scene.setOnKeyPressed(e -> {
-            if (running) {
+            if (running && null != activeBlock) {
                 switch (e.getCode()) {
                     case LEFT  -> activeBlock.moveLeft();
                     case RIGHT -> activeBlock.moveRight();
@@ -249,14 +334,20 @@ public class Main extends Application {
                     case M     -> {
                         if (GameMode.STANDARD == gameMode) {
                             setGameMode(GameMode.GITHUB);
+                        } else if (GameMode.GITHUB == gameMode) {
+                            setGameMode(GameMode.GLOSSY);
                         } else {
                             setGameMode(GameMode.STANDARD);
                         }
                     }
                 }
             } else {
-                level = 1;
-                startLevel(level);
+                switch (e.getCode()) {
+                    case SPACE -> {
+                        level = 1;
+                        startLevel();
+                    }
+                }
             }
         });
 
@@ -265,9 +356,8 @@ public class Main extends Application {
         stage.show();
         stage.setResizable(false);
 
-        //playSound(gameStartSnd);
-
         timer.start();
+        mediaPlayer.play();
     }
 
     @Override public void stop() {
@@ -286,6 +376,14 @@ public class Main extends Application {
         purpleBlockImg = new Image(getClass().getResourceAsStream("purpleBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
         redBlockImg    = new Image(getClass().getResourceAsStream("redBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
 
+        cyanGlossyBlockImg   = new Image(getClass().getResourceAsStream("cyanGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        blueGlossyBlockImg   = new Image(getClass().getResourceAsStream("blueGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        orangeGlossyBlockImg = new Image(getClass().getResourceAsStream("orangeGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        yellowGlossyBlockImg = new Image(getClass().getResourceAsStream("yellowGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        greenGlossyBlockImg  = new Image(getClass().getResourceAsStream("greenGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        purpleGlossyBlockImg = new Image(getClass().getResourceAsStream("purpleGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+        redGlossyBlockImg    = new Image(getClass().getResourceAsStream("redGlossyBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
+
         githubDarkGreenBlockImg      = new Image(getClass().getResourceAsStream("githubDarkGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
         githubGreenBlockImg          = new Image(getClass().getResourceAsStream("githubGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
         githubLightGreenBlockImg     = new Image(getClass().getResourceAsStream("githubLightGreenBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
@@ -293,12 +391,27 @@ public class Main extends Application {
     }
 
     private void loadSounds() {
+        soundTrack      = new Media(getClass().getResource("soundtrack.wav").toExternalForm());
+        moveBlockSnd    = new AudioClip(getClass().getResource("tetris-move-block.wav").toExternalForm());
+        rotateBlockSnd  = new AudioClip(getClass().getResource("tetris-rotate-block.wav").toExternalForm());
+        levelUpSnd      = new AudioClip(getClass().getResource("tetris-level-up-jingle.wav").toExternalForm());
+        clearLineSnd    = new AudioClip(getClass().getResource("tetris-line-clear.wav").toExternalForm());
+        clear4LinesSnd  = new AudioClip(getClass().getResource("tetris-4-lines.wav").toExternalForm());
+        blockFallingSnd = new AudioClip(getClass().getResource("tetris-block-falling.wav").toExternalForm());
+        blockLandedSnd  = new AudioClip(getClass().getResource("tetris-block-landed.wav").toExternalForm());
+        gameOverSnd     = new AudioClip(getClass().getResource("tetris-game-over.wav").toExternalForm());
+    }
 
+    private Label createLabel(final String text) {
+        Label label = new Label(text);
+        label.setFont(Fonts.silkworm(18));
+        label.setTextFill(Color.WHITE);
+        label.setAlignment(Pos.CENTER_RIGHT);
+        return label;
     }
 
 
     // ******************** Game control **************************************
-    // Set mode
     public void setGameMode(final GameMode mode) {
         this.gameMode = mode;
         this.imageMap.clear();
@@ -311,6 +424,15 @@ public class Main extends Application {
                 imageMap.put(BlockType.GREEN, greenBlockImg);
                 imageMap.put(BlockType.PURPLE, purpleBlockImg);
                 imageMap.put(BlockType.RED, redBlockImg);
+            }
+            case GLOSSY   -> {
+                imageMap.put(BlockType.CYAN, cyanGlossyBlockImg);
+                imageMap.put(BlockType.BLUE, blueGlossyBlockImg);
+                imageMap.put(BlockType.ORANGE, orangeGlossyBlockImg);
+                imageMap.put(BlockType.YELLOW, yellowGlossyBlockImg);
+                imageMap.put(BlockType.GREEN, greenGlossyBlockImg);
+                imageMap.put(BlockType.PURPLE, purpleGlossyBlockImg);
+                imageMap.put(BlockType.RED, redGlossyBlockImg);
             }
             case GITHUB   -> {
                 imageMap.put(BlockType.CYAN, githubDarkGreenBlockImg);
@@ -344,6 +466,7 @@ public class Main extends Application {
     private void spawnBlock() {
         activeBlock = nextBlock;
         nextBlock   = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
+        drawPreview();
     }
 
 
@@ -354,14 +477,46 @@ public class Main extends Application {
 
 
     // Start Level
-    private void startLevel(final int level) {
+    private void startLevel() {
+        mediaPlayer.play();
+        running   = true;
+        level     = 1;
+        noOfLifes = 3;
+        restartLevel();
+    }
 
+
+    // Restart level
+    private void restartLevel() {
+        clearMatrix();
+        activeBlock  = null;
+        nextBlock    = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
+        linesCleared = 0;
+        setupLevel(level);
     }
 
 
     // Game Over
     private void gameOver() {
+        //TODO: Show game over
+        mediaPlayer.stop();
+        playSound(gameOverSnd);
+        PropertyManager.INSTANCE.set(Constants.HIGHSCORE_KEY, Long.toString(highscore));
+        PropertyManager.INSTANCE.storeProperties();
+        running = false;
+        level   = 1;
+        clearMatrix();
+    }
 
+
+    // Clear game matrix
+    private void clearMatrix() {
+        for (int y = 0 ; y < MATRIX_HEIGHT ; y++) {
+            for (int x = 0 ; x < MATRIX_WIDTH ; x++) {
+                MATRIX[y][x] = 0;
+                redraw(false);
+            }
+        }
     }
 
 
@@ -432,6 +587,7 @@ public class Main extends Application {
         return true;
     }
 
+
     // Check for complete rows
     private void checkForCompleteRows() {
         for (int i = 0 ; i < MATRIX[0].length ; i++) {
@@ -449,34 +605,64 @@ public class Main extends Application {
                 return;
             }
         }
-        rowsToRemove.clear();
         for (int y = MATRIX_HEIGHT - 1 ; y >= 0 ; y--) {
             int rowSum = 0;
-            for (int x = 0 ; x < MATRIX[y].length ; x++) {
+            for (int x = 0 ; x < MATRIX_WIDTH ; x++) {
                 if (MATRIX[y][x] > 0) { rowSum++; }
             }
             if (rowSum == MATRIX_WIDTH) {
-                rowsToRemove.add(y);
+                clearLine(y);
+                shiftDown(y);
+                clearLine(0);
+                y++;
+                linesCleared++;
+                score += 100;
+                if (score > highscore) { highscore = score; }
+                highScoreValueLabel.setText(Long.toString(highscore));
+                scoreValueLabel.setText(Long.toString(score));
             }
         }
-        // Remove completed rows
-        for (int y : rowsToRemove) {
-            for (int x = 0 ; x < MATRIX_WIDTH ; x++) { MATRIX[y][x] = 0; }
-            for (int row = y - 1 ; row >= 0 ; row--) {
-                for (int x = 0 ; x < MATRIX_WIDTH - 1 ; x++) {
-                    MATRIX[row + 1][x] = MATRIX[row][x];
-                    score += 100;
-                }
+    }
+
+    private void clearLine(final int line) {
+        for (int x = 0 ; x < MATRIX_WIDTH ; x++) { MATRIX[line][x] = 0; }
+        playSound(clearLineSnd);
+    }
+
+    private void shiftDown(final int line) {
+        for (int y = line ; y > 0 ; y--) {
+            for (int x = 0 ; x < MATRIX_WIDTH ; x++) {
+                MATRIX[y][x] = MATRIX[y - 1][x];
             }
+            playSound(blockFallingSnd);
         }
     }
 
 
     // ******************** Redraw ********************************************
+    private void drawPreview() {
+        previewCtx.clearRect(0, 0, 100, 100);
+        final Integer[][] blockMatrix = getBlockMatrix(nextBlock);
+        for (int y = 0 ; y < blockMatrix.length ; y++) {
+            for (int x = 0 ; x < blockMatrix[y].length ; x++) {
+                if (blockMatrix[y][x] == 1) {
+                    previewCtx.drawImage(imageMap.get(nextBlock.blockType), (x * CELL_WIDTH), (y * CELL_HEIGHT));
+                }
+            }
+        }
+    }
+
     private void drawBackground() {
         bkgCtx.clearRect(0, 0, WIDTH, HEIGHT);
         switch(gameMode) {
             case STANDARD -> {
+                bkgCtx.setFill(gameMode.backgroundColor);
+                bkgCtx.fillRect(0, 0, WIDTH, HEIGHT);
+                bkgCtx.setStroke(Color.GRAY);
+                bkgCtx.setLineWidth(10);
+                bkgCtx.strokeRoundRect(10, 10, WIDTH - 20, HEIGHT - 20, 10, 10);
+            }
+            case GLOSSY   -> {
                 bkgCtx.setFill(gameMode.backgroundColor);
                 bkgCtx.fillRect(0, 0, WIDTH, HEIGHT);
                 bkgCtx.setStroke(Color.GRAY);
@@ -507,6 +693,7 @@ public class Main extends Application {
             for (int x = 0; x < MATRIX_WIDTH; x++) {
                 switch(gameMode) {
                     case STANDARD -> ctx.fillRect(x * CELL_WIDTH + 1, y * CELL_HEIGHT + 1, 22, 22);
+                    case GLOSSY   -> ctx.fillRect(x * CELL_WIDTH + 1, y * CELL_HEIGHT + 1, 22, 22);
                     case GITHUB   -> ctx.fillRoundRect(x * CELL_WIDTH + 2, y * CELL_HEIGHT + 2, 20, 20, 5, 5);
                 }
                 switch(MATRIX[y][x]) {
@@ -522,7 +709,7 @@ public class Main extends Application {
         }
 
         // Draw active block
-        if (noOfLifes > 0) {
+        if (noOfLifes > 0 && null != activeBlock) {
             if (update) { activeBlock.update(); }
             final Integer[][] blockMatrix = getBlockMatrix(activeBlock);
             for (int y = 0 ; y < blockMatrix.length ; y++) {
@@ -532,10 +719,12 @@ public class Main extends Application {
                     }
                 }
             }
-        } else {
-            //ctx.setFill(TEXT_GRAY);
-            //ctx.setTextAlign(TextAlignment.CENTER);
-            //ctx.fillText("GAME OVER", WIDTH * 0.5, HEIGHT * 0.75);
+        }
+        if(!running) {
+            ctx.setFont(Fonts.silkworm(24));
+            ctx.setFill(Color.WHITE);
+            ctx.setTextAlign(TextAlignment.CENTER);
+            ctx.fillText("GAME OVER", GAME_WIDTH * 0.5, GAME_HEIGHT * 0.5);
         }
 
         if (null != activeBlock && !activeBlock.active) { activeBlock = null; }
@@ -638,7 +827,7 @@ public class Main extends Application {
                 if (this.y < GAME_HEIGHT - offsetY && moveDownAllowed(Block.this)) {
                     this.y += CELL_HEIGHT;
                 } else {
-                    // Store inactive blocks in MATRIX
+                    // Store block in MATRIX
                     for (int y = 0 ; y < blockMatrix.length ; y++) {
                         for (int x = 0 ; x < blockMatrix[y].length ; x++) {
                             int my = (int) (this.y / CELL_HEIGHT + y);
@@ -656,6 +845,7 @@ public class Main extends Application {
         public void moveLeft() {
             if (this.x - 1 < 0 || !moveLeftAllowed(Block.this)) { return; }
             this.x--;
+            playSound(moveBlockSnd);
             redraw(false);
         }
 
@@ -663,6 +853,7 @@ public class Main extends Application {
             final Integer[][] blockMatrix = getBlockMatrix(Block.this);
             if (this.x + blockMatrix[0].length > MATRIX_WIDTH - 1 || !moveRightAllowed(Block.this)) { return; }
             this.x++;
+            playSound(moveBlockSnd);
             redraw(false);
         }
 
@@ -671,16 +862,13 @@ public class Main extends Application {
             if (this.x < 1 || this.x + blockMatrix[0].length - 1 > MATRIX_WIDTH - 2) { return; }
             this.angle += 90;
             if (this.angle >= 360) { this.angle = 0; }
+            playSound(rotateBlockSnd);
             redraw(false);
         }
 
         public void drop() {
-            int dropCounter = 0;
-            while(active) {
-                System.out.println(dropCounter);
-                redraw(true);
-                dropCounter++;
-            }
+            while(active) { redraw(true); }
+            playSound(blockLandedSnd);
         }
     }
 
