@@ -172,6 +172,7 @@ public class Main extends Application {
                                                                    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
                                                                  };
     private              boolean               running;
+    private              long                  lastGameOver;
     private              long                  lastUpdateCheck;
     private              AnimationTimer        timer;
     private              Canvas                bkgCanvas;
@@ -264,6 +265,12 @@ public class Main extends Application {
                         }
 
                         lastUpdateCheck = now;
+                    }
+                } else {
+                    if (!startScreenView.isVisible()) {
+                        if (now > lastGameOver + 5_000_000_000l) {
+                            startScreen(true);
+                        }
                     }
                 }
             }
@@ -549,6 +556,7 @@ public class Main extends Application {
         running = false;
         level   = 1;
         clearMatrix();
+        lastGameOver = System.nanoTime();
     }
 
 
