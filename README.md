@@ -17,6 +17,12 @@ e.g. `/home/YOUR_USERNAME/tetris.properties`
 highscore=0
 ```
 
+### Build
+- Get the source of this project
+- Make sure you are on JDK 17
+- call ```./gradlew clean build``` on the command line
+- execute ````bash build_app_macos.sh```` on the command line to build native executable and installer
+
 ### Gameplay
 - Space bar to start the game when in start screen otherwise it will rotate the current block
 - Move block to the left: Arrow left
@@ -24,6 +30,7 @@ highscore=0
 - Fast drop block: Arrow down
 - Rotate block Space bar
 - M key will toggle between modes (GLOSSY, GITHUB, STANDARD)
+
 
 ### ScreenShots
 
