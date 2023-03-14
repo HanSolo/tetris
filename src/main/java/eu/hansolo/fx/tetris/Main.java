@@ -244,7 +244,7 @@ public class Main extends Application {
                         redraw(true);
 
                         // Increase level every 10 lines cleared
-                        if (linesCleared == 10) {
+                        if (linesCleared >= 10) {
                             linesCleared = 0;
                             level++;
                             playSound(levelUpSnd);
@@ -313,7 +313,6 @@ public class Main extends Application {
         noOfLifes    = 3;
         score        = 0;
         linesCleared = 0;
-        setupLevel(level);
     }
 
     @Override public void start(final Stage stage) {
@@ -542,7 +541,6 @@ public class Main extends Application {
         activeBlock  = null;
         nextBlock    = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
         linesCleared = 0;
-        setupLevel(level);
     }
 
 
@@ -568,12 +566,6 @@ public class Main extends Application {
                 redraw(false);
             }
         }
-    }
-
-
-    // Setup blocks for given level
-    private void setupLevel(final int level) {
-
     }
 
 
@@ -644,10 +636,7 @@ public class Main extends Application {
         for (int i = 0 ; i < MATRIX[0].length ; i++) {
             if (MATRIX[0][i] > 0) {
                 noOfLifes--;
-                if (noOfLifes < 0) {
-                    System.out.println("Game Over");
-                    return;
-                }
+                if (noOfLifes < 0) { /* Game Over */ return; }
                 for (int y = MATRIX_HEIGHT - 1 ; y >= 0 ; y--) {
                     for (int x = 0 ; x < MATRIX[y].length ; x++) {
                         MATRIX[y][x] = 0;
