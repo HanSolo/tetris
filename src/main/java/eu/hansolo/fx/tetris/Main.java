@@ -10,8 +10,13 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.Border;
+import javafx.scene.layout.BorderStroke;
+import javafx.scene.layout.BorderStrokeStyle;
+import javafx.scene.layout.BorderWidths;
 import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
@@ -173,6 +178,7 @@ public class Main extends Application {
     private              GraphicsContext       bkgCtx;
     private              Canvas                canvas;
     private              GraphicsContext       ctx;
+    private              Image                 startScreenImg;
     private              Image                 cyanBlockImg;
     private              Image                 blueBlockImg;
     private              Image                 orangeBlockImg;
@@ -214,13 +220,16 @@ public class Main extends Application {
     private              Label                 highScoreValueLabel;
     private              Label                 scoreLabel;
     private              Label                 scoreValueLabel;
+    private              Label                 levelLabel;
+    private              Label                 levelValueLabel;
     private              Canvas                previewCanvas;
     private              GraphicsContext       previewCtx;
+    private              ImageView             startScreenView;
 
 
     // ******************** Methods *******************************************
     @Override public void init() {
-        running         = true;
+        running         = false;
         highscore       = PropertyManager.INSTANCE.getLong(Constants.HIGHSCORE_KEY, 0);
         level           = 1;
         imageMap        = new ConcurrentHashMap<>(BlockType.values().length);
@@ -239,7 +248,7 @@ public class Main extends Application {
                             level++;
                             playSound(levelUpSnd);
                             if (level > 20) { level = 0; }
-                            //TODO: Show current level
+                            levelValueLabel.setText(Integer.toString(level));
                         }
 
                         // Check for failed
@@ -256,8 +265,6 @@ public class Main extends Application {
 
                         lastUpdateCheck = now;
                     }
-                } else {
-                    startScreen();
                 }
             }
         };
@@ -269,18 +276,21 @@ public class Main extends Application {
         canvas    = new Canvas(GAME_WIDTH, GAME_HEIGHT);
         ctx       = canvas.getGraphicsContext2D();
 
+        previewCanvas = new Canvas(100, 100);
+        previewCtx    = previewCanvas.getGraphicsContext2D();
+
         // Load all images
         loadImages();
 
         // Load all sounds
         loadSounds();
 
-        // Set Game Mode
-        setGameMode(GameMode.GLOSSY);
-
         // Initialize block
         activeBlock = null;
         nextBlock   = new Block(BlockType.values()[RND.nextInt(BlockType.values().length)], MATRIX_WIDTH * 0.5, -CELL_HEIGHT);
+
+        // Set Game Mode
+        setGameMode(GameMode.GLOSSY);
 
         // Initialize data
         highScoreLabel      = createLabel("HIGHSCORE");
@@ -289,9 +299,8 @@ public class Main extends Application {
         scoreLabel      = createLabel("SCORE");
         scoreValueLabel = createLabel(Long.toString(score));
 
-
-        previewCanvas = new Canvas(100, 100);
-        previewCtx    = previewCanvas.getGraphicsContext2D();
+        levelLabel      = createLabel("LEVEL");
+        levelValueLabel = createLabel(Integer.toString(level));
 
         // Initialize level
         noOfLifes    = 3;
@@ -308,13 +317,25 @@ public class Main extends Application {
         final StackPane gamePane = new StackPane(bkgCanvas, canvas);
 
         final VBox highScoreBox = new VBox(10, highScoreLabel, highScoreValueLabel);
-        highScoreBox.setAlignment(Pos.CENTER_RIGHT);
+        highScoreBox.setPadding(new Insets(5));
+        highScoreBox.setAlignment(Pos.CENTER);
+        highScoreBox.setBorder(new Border(new BorderStroke(Color.GRAY, BorderStrokeStyle.SOLID, new CornerRadii(5), new BorderWidths(5))));
 
         final VBox scoreBox = new VBox(10, scoreLabel, scoreValueLabel);
-        scoreBox.setAlignment(Pos.CENTER_RIGHT);
+        scoreBox.setPadding(new Insets(5));
+        scoreBox.setAlignment(Pos.CENTER);
+        scoreBox.setBorder(new Border(new BorderStroke(Color.GRAY, BorderStrokeStyle.SOLID, new CornerRadii(5), new BorderWidths(5))));
 
+        final VBox levelBox = new VBox(10, levelLabel, levelValueLabel);
+        levelBox.setPadding(new Insets(5));
+        levelBox.setAlignment(Pos.CENTER);
+        levelBox.setBorder(new Border(new BorderStroke(Color.GRAY, BorderStrokeStyle.SOLID, new CornerRadii(5), new BorderWidths(5))));
 
-        final VBox dataPane = new VBox(50, highScoreBox, scoreBox, previewCanvas);
+        StackPane previewPane = new StackPane(previewCanvas);
+        previewPane.setPadding(new Insets(5));
+        previewPane.setBorder(new Border(new BorderStroke(Color.GRAY, BorderStrokeStyle.SOLID, new CornerRadii(5), new BorderWidths(5))));
+
+        final VBox dataPane = new VBox(50, highScoreBox, scoreBox, levelBox, previewPane);
         final HBox gameBox  = new HBox(10, gamePane, dataPane);
 
         dataPane.setPrefWidth(200);
@@ -322,7 +343,16 @@ public class Main extends Application {
         dataPane.setPadding(new Insets(10));
         gameBox.setBackground(new Background(new BackgroundFill(Color.BLACK, CornerRadii.EMPTY, Insets.EMPTY)));
 
-        final Scene     scene = new Scene(gameBox);
+        startScreenView = new ImageView(startScreenImg);
+
+        StackPane pane = new StackPane(gameBox, startScreenView);
+
+        final Scene scene = new Scene(pane, 500, 530);
+
+        stage.setTitle("Tetris");
+        stage.setScene(scene);
+        stage.show();
+        stage.setResizable(false);
 
         scene.setOnKeyPressed(e -> {
             if (running && null != activeBlock) {
@@ -342,21 +372,22 @@ public class Main extends Application {
                     }
                 }
             } else {
-                switch (e.getCode()) {
-                    case SPACE -> {
-                        level = 1;
-                        startLevel();
+                if (startScreenView.isVisible()) {
+                    startScreen(false);
+                } else {
+                    switch (e.getCode()) {
+                        case SPACE -> {
+                            level = 1;
+                            startLevel();
+                        }
                     }
                 }
             }
         });
 
-        stage.setTitle("Tetris");
-        stage.setScene(scene);
-        stage.show();
-        stage.setResizable(false);
+        startScreen(true);
 
-        timer.start();
+        //timer.start();
         mediaPlayer.play();
     }
 
@@ -368,6 +399,8 @@ public class Main extends Application {
 
     // Helper methods
     private void loadImages() {
+        startScreenImg = new Image(getClass().getResourceAsStream("startScreen.png"), 500, 530, true, false);
+
         cyanBlockImg   = new Image(getClass().getResourceAsStream("cyanBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
         blueBlockImg   = new Image(getClass().getResourceAsStream("blueBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
         orangeBlockImg = new Image(getClass().getResourceAsStream("orangeBlock.png"), CELL_WIDTH, CELL_HEIGHT, true, false);
@@ -404,7 +437,7 @@ public class Main extends Application {
 
     private Label createLabel(final String text) {
         Label label = new Label(text);
-        label.setFont(Fonts.silkworm(18));
+        label.setFont(Fonts.silkworm(17));
         label.setTextFill(Color.WHITE);
         label.setAlignment(Pos.CENTER_RIGHT);
         return label;
@@ -453,6 +486,7 @@ public class Main extends Application {
                 imageMap.put(BlockType.RED, redBlockImg);
             }
         }
+        drawPreview();
         drawBackground();
         redraw(false);
     }
@@ -471,8 +505,17 @@ public class Main extends Application {
 
 
     // Start Screen
-    private void startScreen() {
-
+    private void startScreen(final boolean visible) {
+        startScreenView.setVisible(visible);
+        startScreenView.setManaged(visible);
+        running = visible;
+        if (visible) {
+            timer.stop();
+        } else {
+            level = 1;
+            startLevel();
+            timer.start();
+        }
     }
 
 
