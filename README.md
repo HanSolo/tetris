@@ -32,6 +32,10 @@ highscore=0
 - M key will toggle between modes (GLOSSY, GITHUB, STANDARD)
 
 
+### Play online in the browser
+[WebFX](https://tetris.webfx.dev/)
+
+
 ### ScreenShots
 
 ![StartScreen](https://i.ibb.co/71byD10/tetris-start-screen.png)
