@@ -1,8 +1,8 @@
 @ECHO OFF
 
-set JAVA_VERSION=17
-set MAIN_JAR=tetris-17.0.0.jar
-set APP_VERSION=17.0.0
+set JAVA_VERSION=25
+set MAIN_JAR=tetris-25.0.0.jar
+set APP_VERSION=25.0.0
 
 rem ------ SETUP DIRECTORIES AND FILES ----------------------------------------
 rem Remove previously generated java runtime and installers. Copy all required

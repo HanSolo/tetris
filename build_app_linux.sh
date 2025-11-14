@@ -1,8 +1,8 @@
 #!/bin/bash
 
-JAVA_VERSION=17
-MAIN_JAR="tetris-17.0.0.jar"
-APP_VERSION=17.0.0
+JAVA_VERSION=25
+MAIN_JAR="tetris-25.0.0.jar"
+APP_VERSION=25.0.0
 
 echo "java home: $JAVA_HOME"
 echo "project version: $PROJECT_VERSION"
